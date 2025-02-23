@@ -13,6 +13,25 @@ resource "aws_internet_gateway" "rger_igw" {
     Name = "rger_igw"
   }
 }
+
+resource "aws_eip" "nat" {
+  tags = {
+    Name = "nat-eip"
+  }
+}
+#2a nat
+resource "aws_nat_gateway" "nat" {
+  allocation_id = aws_eip.nat.id
+  subnet_id     = aws_subnet.rger_public_subnet[0].id # Replace with your public subnet ID
+
+  tags = {
+    Name = "nat-gateway"
+  }
+
+  depends_on = [aws_internet_gateway.rger_igw] # Ensure the IGW is created first
+}
+
+
 #3 public subnet
 resource "aws_subnet" "rger_public_subnet" {
   count             = length(var.public_subnet_cidr) #length() returns the number of elements in a list
@@ -49,9 +68,17 @@ resource "aws_route_table_association" "public" {
   subnet_id      = aws_subnet.rger_public_subnet[count.index].id
 }
 
-#4 private rtb
+#4 private rtb to direct inbound to NAT gw
 resource "aws_route_table" "rger_private_rt" {
   vpc_id = aws_vpc.rger_vpc.id
+  route {
+    cidr_block     = "0.0.0.0/0"
+    nat_gateway_id = aws_nat_gateway.nat.id
+  }
+
+  tags = {
+    Name = "private-route-table"
+  }
 }
 
 resource "aws_route_table_association" "private" {
@@ -76,6 +103,13 @@ resource "aws_security_group" "rger_web_sg" {
     description = "allow all traffic thro HTTP"
     from_port   = "80"
     to_port     = "80"
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+  ingress {
+    description = "allow all traffic thro HTTPS"
+    from_port   = "443"
+    to_port     = "443"
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
@@ -135,5 +169,6 @@ resource "aws_volume_attachment" "rger" {
   volume_id   = aws_ebs_volume.rger[count.index].id #Reference to the EBS volume
   device_name = "/dev/sdf"  # Device name to attach the volume
 }
-#9 create elastic IP for EC2
+#9 create elastic IP for NAT Gateway
+
 
